@@ -1,0 +1,452 @@
+
+
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>Gokujou</title>
+		<script type = "text/javascript" 
+				src = "peer.js" >
+		</script>
+		<script type = "text/javascript">
+		
+			var drawing;
+			var context;
+			var canvas;
+			//var output;
+			//var testing;
+			var statusdiv;
+			
+			var peer;
+			var connection;
+			var myTurn;
+			var myColor;
+			
+			var xStart = 0;
+			var yStart = 0;
+			
+			//counter for placing pieces in that index of board array
+			var counter = 1;
+			
+			// canvas constants
+			var CANV_HEIGHT = 750;
+			var CANV_WIDTH = 750;
+			var LINE_COUNT = 19;
+			var LINE_PADDING = CANV_HEIGHT/20;
+			var LINE_SPACE = CANV_HEIGHT/20;
+			
+			// array of pieces
+			var boardArr = [];
+			
+			var arrWhite = [];
+			var arrBlack = [];
+			
+			
+			var arrBoard = [];
+			
+			
+			var piece = {
+				
+				pieceXCoord: 0,
+				pieceYCoord: 0,
+				pieceColor: "blue", // made blue to show any errors...
+				pieceOwner: 0,
+				
+				getXcoord: function(){
+					return this.pieceXCoord;
+				},
+				
+				getYcoord: function(){
+					return this.pieceYCoord;
+				},
+				
+				getColor: function(){
+					return this.pieceColor;
+				},
+			
+				setPosition: function(xLinePos, yLinePos){
+					this.pieceXCoord = xLinePos;
+					this.pieceYCoord = yLinePos;
+					//output.innerHTML += " setPosition: " + this.pieceXCoord + ", " + this.pieceYCoord;
+				},
+				
+				setOwner: function(owner){
+					this.pieceOwner = owner;
+				}
+			};
+			
+			function init(){
+				drawing = document.getElementById("drawing");
+				context = drawing.getContext("2d");
+				drawing.addEventListener('click', onClick);
+				//testing = document.getElementById("testing");
+				statusdiv = document.getElementById("status");
+				// need to reset here otherwise buttons will stay disabled.
+				document.getElementById("hostButt").disabled = false;
+				document.getElementById("conButt").disabled = false;
+				makePeer(); // initialize self
+				drawBoard();
+				createArray();
+				var defaultPiece = Object.create(piece);
+				for(var ii=0;ii<19;ii++){
+					for(var ji=0;ji<19;ji++){
+						
+						arrBoard[ii][ji] = defaultPiece;
+						
+					}
+				}
+				//testing.innerHTML += arrBoard[0][0].getColor();
+			}
+			
+			
+			function createArray(){
+			
+				for(var p=0; p<19; p++){
+					arrBoard[p] = new Array(19);
+					//arrBoard[p] = -1;
+				//testing.innerHTML += "made it" + " " + p + " ";
+				}
+				
+				/**
+				create a 2d array of default pieces, so checkwin can properly see if a piece was placed
+				TEST: see if it overwrites the default piece when placing another piece, or just change the 
+				properties of the default piece to the place where user chose
+				**/
+				
+				//var testPiece = Object.create(piece);
+				//testPiece.pieceXCoord = 3;
+				//testPiece.pieceYCoord = 3;
+				//testPiece.pieceColor = "white";
+				//var testX = 2;
+				//var testY = 2;
+				//pieceInArr(testPiece);
+				//arrBoard[2][2] = testPiece;
+				//testing.innerHTML = arrBoard[testX][testY].pieceColor;
+				
+			}
+			
+			function pieceInArr(piece){
+				
+				arrBoard[piece.getXcoord()-1][piece.getYcoord()-1] = piece;
+				//testing.innerHTML += "<br>" + arrBoard[piece.getXcoord()][piece.getYcoord()].pieceColor + arrBoard[piece.getXcoord()][piece.getYcoord()].getXcoord() + " " + arrBoard[piece.getXcoord()][piece.getYcoord()].getYcoord();
+				
+			}
+			
+			
+			function drawBoard(){
+				// Clear Background
+				context.fillStyle = "#FFFA6B";
+				context.fillRect(0,0,CANV_HEIGHT,CANV_WIDTH);
+				//Line
+				context.strokeStyle = "#BCBCBC";
+				context.lineWidth = "5";
+				
+				// draw entire grid using for loop
+				context.beginPath();
+				for(var i = 0; i < LINE_COUNT; i++)
+				{	
+					context.moveTo(LINE_PADDING, ((i * LINE_SPACE) + LINE_PADDING)); // Move down the screen
+					context.lineTo((CANV_HEIGHT - LINE_PADDING), ((i * LINE_SPACE) + LINE_PADDING)); // make vertical line-height
+					
+					context.moveTo(((i * LINE_SPACE) + LINE_PADDING), LINE_PADDING); // move across the screen
+					context.lineTo(((i * LINE_SPACE) + LINE_PADDING), (CANV_WIDTH - LINE_PADDING)); // amke horizontal line across
+				}
+				
+				context.closePath();
+				context.stroke();
+			}
+			
+			function onClick(e){
+				// make sure it is the player's turn
+				if(myTurn)
+				{
+					// get mouse position on canvas
+					var rect = drawing.getBoundingClientRect();
+					var mouseXPos = e.clientX - rect.left;
+					var mouseYPos = e.clientY - rect.top;
+					
+					//get piece coordinates
+					var xRow = Math.round(mouseXPos / LINE_SPACE); // the row the piece is in
+					var yCol = Math.round(mouseYPos / LINE_SPACE); // the col the piece is in
+					
+					//output.innerHTML += ", " + "Coordinates: " + xCoord + " " + yCoord;
+					//output.innerHTML += ", " + "Row, Column: " + xRow + " " + yCol + " " + counter;
+					
+					/**
+					"new" keyword does not work unless you have constructor function,
+					object.create lets you create and then set properties in the class
+					**/
+					// make piece object with current proporties
+					var newPiece = Object.create(piece);
+					newPiece.setPosition(xRow, yCol);
+					newPiece.setOwner(myColor);
+					
+					
+					//newBoard.addPiece(newPiece);
+					//console.log(yCoord);
+					//output.innerHTML = "before call";
+					
+					// make sure the space isn't already taken.
+					var spaceTaken = false;
+					
+					for(var i = 0; i < boardArr.length; i++)
+					{
+						//console.log(boardArr[i].getXcoord() + " , " + boardArr[i].getYcoord())
+						if(boardArr[i].getXcoord() == xRow
+						&& boardArr[i].getYcoord() == yCol )
+						{
+							spaceTaken = true;
+						}
+					}
+					
+					// make sure peice doesn't get placed out of bounds
+					if(xRow < 1 || xRow > 19)
+					{
+						spaceTaken = true;
+					}
+					
+					if(yCol < 1 || yCol > 19)
+					{
+						spaceTaken = true;
+					}
+					
+					// if the space is fair game, place the piece
+					if(!spaceTaken)
+					{
+						//console.log(newPiece.getXcoord());
+						placePiece(newPiece);
+						//console.log(newPiece.pieceColor);
+						counter = counter + 1;
+						
+						// SEND DATA TO OTHER PLAYER
+						connection.send(xRow + "," + yCol);
+						myTurn = false; // no longer your turn
+					}
+				} // end my turn check
+			}
+			
+			function placePiece(currPiece){
+				// determine piece color.
+				var xTemp = currPiece.getXcoord();
+				var yTemp = currPiece.getYcoord();
+				if(currPiece.pieceOwner === 1)
+				{
+					context.fillStyle = "black";
+					currPiece.pieceColor = "black";
+					//arrWhite.push(currPiece);
+					//pieceInArr(currPiece);
+					
+					
+				}
+				else
+				{
+					if(currPiece.pieceOwner === 0)
+					{
+						console.log("ERROR: OWNER is 0");
+					}
+					context.fillStyle = "white";
+					currPiece.pieceColor = "white";
+					//arrBlack.push(currPiece);
+					
+				}
+				
+				
+				//testing.innerHTML += arrBoard[xTemp][yTemp].currPiece.getXcoord();
+				// The pixel coords for the piece
+				var x = currPiece.getXcoord() * LINE_SPACE;
+				var y = currPiece.getYcoord() * LINE_SPACE;
+				//console.log(x + " , " + y);
+				
+				// draw piece
+				context.beginPath();
+				context.arc(x,y,12,0,Math.PI*2,true); 
+				context.closePath();
+				context.fill();
+				
+				pieceInArr(currPiece);
+				//check if piece is a winner
+				checkWin();
+
+				
+				// Add current piece to array of pieces
+				//boardArr.push(currPiece);
+			}
+			
+			
+			function checkWin(){
+				
+				var win = false;
+				//for every piece on the board
+				for(var i=0;i<19;i++){
+					for(var j=0;j<19;j++){
+						//check if there is a piece there
+						//create variables after every piece = 0;
+						var conX = 0;
+						var conY = 0;
+						var conDR = 0;
+						var conDL = 0;
+						//testing.innerHTML = "in checkwin for loops";
+						if (arrBoard[i][j].pieceColor == "white" || arrBoard[i][j].pieceColor == "black"){
+							//testing.innerHTML = "in checkwin if piece placed " + arrBoard[i][j].pieceColor + " " + arrBoard[i][j].getXcoord() + " " + arrBoard[i][j].getYcoord();
+							//check for cosecutive same color pieces in all directions
+							var tempPiece = arrBoard[i][j];
+							
+							//testing.innerHTML += tempPiece.getXcoord() + " " + tempPiece.getYcoord();
+							for(var n=0;n<5;n++){
+								//check to the right
+								//testing.innerHTML = "in checkwin for n";
+								if(i+n < 19){
+									if(tempPiece.pieceColor == arrBoard[i+n][j].pieceColor){
+										conX = conX + 1;
+										//testing.innerHTML = "in checkwin if win right";
+									}
+								}
+								
+									//check 
+								if(j+n < 19){
+									if(tempPiece.pieceColor == arrBoard[i][j+n].pieceColor){
+										conY = conY + 1;
+									}
+								}
+								if(i+n < 19 && j+n < 19){
+									if(tempPiece.pieceColor == arrBoard[i+n][j+n].pieceColor){
+										conDR = conDR + 1;
+									}
+								}
+								if(i+n < 19 && j-n > 0){
+									if(tempPiece.pieceColor == arrBoard[i+n][j-n].pieceColor){
+											conDL = conDL + 1;
+									}
+								}
+								
+							}
+							if(conX == 5 || conY == 5 || conDR == 5 || conDL == 5){
+								win = true;
+								//testing.innerHTML += "winner detected";
+								alert("Winner " + tempPiece.pieceColor);
+								return win;
+								
+							}
+						}//end if piece on board
+					}//end for j
+				}//end for i
+				return win;
+			}
+			
+			// create the instance of peer for this player
+			function makePeer(){
+				peer = new Peer({key: 'uqyxqkqnleo03sor', debug: 3});
+				
+				//testing.innerHTML = "created"
+				
+				peer.on('open', function(id){
+					statusdiv.innerHTML = "Your ID: " + id;
+				});
+				
+				peer.on('error', function(err){
+					console.log(err);
+					statusdiv.innerHTML = "Connection Error...";
+				});
+				
+				peer.on('connection', function(conn){
+					//console.log(peer.connections);
+					console.log(conn);
+					makeConnection(conn);
+				});
+			}
+			
+			// The function called for the connecting player
+			function connect(){
+				var destID = document.getElementById("destIDin").value;
+				
+				if(destID != "")
+				{
+					myTurn = false;
+					myColor = -1;
+					
+					var conn = peer.connect(destID);
+					
+					//disable buttons
+					document.getElementById("hostButt").disabled = true;
+					document.getElementById("conButt").disabled = true;
+					
+					conn.on('open', function(){
+						console.log('in connect');
+						makeConnection(conn);
+						//conn.send('hello1');
+					});
+				}
+			}
+			
+			// function called for the hosting player
+			function host(){
+				statusdiv.innerHTML += "<br>Waiting for Opponent to Connect...";
+				
+				myTurn = true;
+				myColor = 1;
+				
+				// disable buttons
+				document.getElementById("hostButt").disabled = true;
+				document.getElementById("conButt").disabled = true;
+			}
+			
+			// Used to establist the connection between the 2 players
+			function makeConnection(conn){
+				
+				conn.on('open', function(){
+					console.log('conn open in makeConnection()');
+					//conn.send('HELLO');
+				});
+				
+				// when a move made by the other player is received.
+				conn.on('data', function(data){
+					console.log(data);
+					// split the pos data & set the position
+					var vals = data.split(",");
+					var tempPiece = Object.create(piece);
+					tempPiece.setPosition(vals[0],vals[1]);
+					// make sure it is the opponent's color
+					tempPiece.setOwner(myColor * -1);
+					
+					// place the piece & make it the player's turn
+					var winner = checkWin();
+					placePiece(tempPiece);
+					if(winner == true){
+						
+						alert("Winner " + tempPiece.pieceColor);
+						connection.close();
+						
+					}
+					
+					myTurn = true;
+				});
+				
+				conn.on('error', function(err){
+					statusdiv.innerHTML = "Something went wrong...";
+					console.log(err);
+				});
+				
+				statusdiv.innerHTML = "Connected!";
+				
+				connection = conn;
+			}
+		</script>
+	</head>
+	<body onload = "init()">
+	<div id="input" >
+		Would you like to:
+		<button id="hostButt" onclick="host()"> Host </button>
+		<br>
+		<input id="destIDin" type="text" class="text-line" placeholder="Destination ID"/>
+		<button id="conButt" onclick="connect()"> Connect </button>
+	</div>
+	<div id = "status">
+		Awaiting Input...
+	</div>
+	<canvas id = "drawing"
+			height = "750px"
+			width = "750px" >
+		<p>No Canvas Available</p>
+	</canvas>
+	<div id="testing"> testing area </div>
+	</body>
+</html>
